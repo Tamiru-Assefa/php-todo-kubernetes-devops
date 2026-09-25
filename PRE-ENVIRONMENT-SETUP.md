@@ -215,7 +215,7 @@ kubectl get nodes
 ```
 
 Expected:
-![alt text](Screenshots/Screenshot%202026-09-23%20160841.png)
+![alt text](ScreenShots/Screenshot%202026-09-23%20160841.png)
 
 
 

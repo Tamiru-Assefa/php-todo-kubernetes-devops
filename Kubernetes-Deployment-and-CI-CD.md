@@ -1,120 +1,297 @@
-Kubernetes Deployment Guide
-This document explains how to deploy the PHP Todo web application and its MySQL database onto the Kubernetes cluster we prepared in the previous document.
+# Kubernetes Deployment Guide
 
+This document explains how to deploy the **PHP Todo web application** and its **MySQL database** onto the Kubernetes cluster prepared in the previous document.
 
+---
 
-1. Introduction
-At this point, you should have a working Kubernetes cluster with 3 nodes (desktop-control-plane, desktop-worker, desktop-worker2).
+# 1. Introduction
 
-We will now deploy our application. Our application consists of two main parts:
+At this point, you should have a working Kubernetes cluster with **3 nodes**:
 
-PHP Todo App (Frontend/Backend): The web application that users interact with.
+| Node                    | Role          |
+| ----------------------- | ------------- |
+| `desktop-control-plane` | Control Plane |
+| `desktop-worker`        | Worker Node   |
+| `desktop-worker2`       | Worker Node   |
 
-MySQL Database: Where the Todo tasks are permanently stored.
+We will now deploy our application onto this Kubernetes cluster.
 
-To make this robust, we will deploy 3 replicas of the PHP app (so if one crashes, the app stays online) and 1 replica of MySQL (backed by persistent storage).
+The application consists of two main components:
 
-# 2.  Get the Application Source Code
+* **PHP Todo App** — The web application that users interact with.
+* **MySQL Database** — Stores the Todo tasks persistently.
+
+To make the application more resilient, we will deploy:
+
+* **3 replicas** of the PHP application.
+* **1 MySQL replica** backed by persistent storage.
+
+With three PHP replicas, Kubernetes can keep the application available even if one application Pod fails.
+
+---
+
+# 2. Get the Application Source Code
 
 The PHP Todo application is stored in GitHub.
 
-Repository:
+**Repository:**
 
 ```text
 https://github.com/Tamiru-Assefa/devops-php-todo
 ```
 
+Clone the repository:
+
 ```bash
 git clone https://github.com/Tamiru-Assefa/devops-php-todo.git
 ```
 
-Then:
+Move into the project directory:
 
 ```bash
 cd devops-php-todo
 ```
 
-Verify the Kubernetes directory:
+Verify that the Kubernetes cluster is available:
 
 ```bash
 kubectl get nodes
 ```
 
-![alt text](ScreenShots/gitclone.png)
+You should see the three nodes in the `Ready` state.
 
-Later, Jenkins will clone the same repository automatically during the CI/CD pipeline.
+![Git Clone](ScreenShots/gitclone.png)
+
+> **Note:** Later, Jenkins will clone this same repository automatically as part of the CI/CD pipeline. For now, we are cloning it manually to prepare and test the deployment environment.
 
 ---
 
-# 3. Build Jenkins Container on the Control Plane
+# 3. Build the Jenkins Container on the Control Plane
 
- So what we will do is build the DockerFile found in Jenkins directory.
+For this project, Jenkins will run on the **control-plane machine** as a Docker container.
 
- ```bash
+The project contains a dedicated Jenkins directory with its own `Dockerfile`.
+
+Move into the Jenkins directory:
+
+```bash
 cd Jenkins
-docker build -t devops-jenkins:1.0
- ```
-![alt text](ScreenShots/jenkins%20container%20build.png)
+```
 
-Next we build a volume for the Jenkins Container; incase the container fail the data like installed plugins and Job are not get lost. 
+Build the Jenkins Docker image:
+
+```bash
+docker build -t devops-jenkins:1.0 .
+```
+
+### What does this command do?
+
+* `docker build` — Builds a Docker image from the `Dockerfile`.
+* `-t devops-jenkins:1.0` — Gives the image a name and version.
+* `.` — Tells Docker to use the current directory as the build context.
+
+![Jenkins Container Build](ScreenShots/jenkins%20container%20build.png)
+
+---
+
+## 3.1 Create Persistent Jenkins Storage
+
+Jenkins stores important information such as:
+
+* Installed plugins
+* Jenkins configuration
+* Credentials
+* Jobs and pipelines
+* Build history
+
+If these files were stored only inside the container, deleting the container could cause the data to be lost.
+
+Therefore, create a Docker volume:
 
 ```bash
 docker volume create jenkins_home
 ```
-Next we run the container on the port 8081 which is forwarded to jenkins port 8080 and mount the volume.
 
-```bash
-docker run -d --name jenkins -p 8081:8080 -v jenkins_home:/var/jenkins_home devops-jenkins:1.0
-```
----
-
-# 4. 🌐 Verify Jenkins & Docker Login
-
-Open Jenkins from your browser:
+The volume will be mounted to Jenkins' data directory:
 
 ```text
-http://<ip>:8081
+/var/jenkins_home
 ```
 
-Then login to jenkins(follow the instruction found on the ui).
-Install suggested Plugins.
+---
 
-## Docker Hub Login
-We have to Login to our dockerhub account so every build container are going to be stored on the remote repo. 
-And we create credential token on dockerhub and connect it to our jenkins service. so Jenkins can push the images with out any barrier. 
+## 3.2 Run Jenkins
+
+Run the Jenkins container:
+
+```bash
+docker run -d \
+  --name jenkins \
+  -p 8081:8080 \
+  -v jenkins_home:/var/jenkins_home \
+  devops-jenkins:1.0
+```
+
+### Port Mapping
+
+```text
+Host Port 8081  →  Container Port 8080
+```
+
+Jenkins itself listens on port `8080` inside the container, while we expose it through port `8081` on the host.
+
+### Verify the Jenkins container
+
+```bash
+docker ps
+```
+
+You should see the Jenkins container running.
+
+You can also check its logs:
+
+```bash
+docker logs jenkins
+```
+
+---
+
+# 4. 🌐 Verify Jenkins and Configure Docker Hub
+
+Open Jenkins in your browser:
+
+```text
+http://<IP>:8081
+```
+
+For example:
+
+```text
+http://192.168.x.x:8081
+```
+
+Follow the instructions shown by Jenkins to complete the initial setup.
+
+During the setup:
+
+1. Unlock Jenkins using the initial administrator password.
+2. Install the suggested plugins.
+3. Create the Jenkins administrator account.
+4. Complete the Jenkins setup.
+
+---
+
+## 4.1 Docker Hub Authentication
+
+Our CI/CD pipeline will eventually build Docker images and push them to **Docker Hub**.
+
+The workflow will look like this:
+
+```text
+Jenkins
+   │
+   │ Build
+   ▼
+Docker Image
+   │
+   │ Push
+   ▼
+Docker Hub
+   │
+   │ Pull
+   ▼
+Kubernetes Cluster
+```
+
+For this reason, Jenkins needs permission to authenticate with Docker Hub.
+
+### Create a Docker Hub Access Token
+
+From your Docker Hub account:
+
+1. Open **Account Settings**.
+2. Go to **Personal Access Tokens**.
+3. Create a new access token.
+4. Give it the required permissions.
+5. Copy the token and store it securely.
+
+> **Security:** Never put your Docker Hub password or access token directly inside a `Jenkinsfile` or commit it to GitHub.
+
+The token should later be stored in **Jenkins Credentials** and referenced securely by the pipeline.
+
+For a basic local Docker test, you can also authenticate from the terminal:
 
 ```bash
 docker login
 ```
+
+Then provide your Docker Hub username and access token when prompted.
+
 ---
 
+# 5. 🐳 Build and Push the Application Image
+
+Before Kubernetes can deploy our PHP application, the application must exist as a **Docker image**.
+
+The project already contains a `Dockerfile` that defines how the PHP Todo application should be packaged.
+
+The overall process is:
+
+```text
+Application Source Code
+        │
+        ▼
+     Dockerfile
+        │
+        │ docker build
+        ▼
+  Docker Image
+        │
+        │ docker push
+        ▼
+    Docker Hub
+        │
+        │ Kubernetes pulls image
+        ▼
+ Kubernetes Pods
+```
+
+## 5.1 Build the Image Locally
+
+Return to the project root:
+
+```bash
+cd ..
+```
+
+Build the application image:
+
+```bash
+docker build -t ybtamiru/devops-php-todo:1.0 .
+docker push ybtamiru/devops-php-todo:1.0
+```
+
+### Understanding the Image Name
+
+The image name follows this structure:
+
+```text
+<dockerhub-username>/<repository>:<tag>
+```
+
+```bash
+docker images
+```
+
+
+![Build Image](ScreenShots/build-img.jpg)
+
+![Docker Images](ScreenShots/view-imgs.jpg)
 
 
 
 
-
-
-
-
-
-
-here we build the img and push it to the repo
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 10.  Create the Kubernetes Namespace
+# 11.  Create the Kubernetes Namespace
 
 Now we begin creating Kubernetes resources.
 
@@ -134,7 +311,27 @@ kubectl get namespaces
 
 ---
 
-# 11.  Create the MySQL Secret
+# 6. Create the Kubernetes Namespace
+
+Now we begin creating Kubernetes resources.
+
+Creating `devops-todo` namespace. Namespace help us to logically separate this projects setup from the others.
+
+```bash
+kubectl apply -f Kubernetes/namespace.yaml
+```
+
+Verify:
+
+```bash
+kubectl get namespaces
+```
+
+![alr text](ScreenShots/namespace.png)
+
+---
+
+# 7. Create the MySQL Secret
 
 The database credentials should not be written directly into the application configuration.
 
@@ -145,7 +342,6 @@ Our Secret name will be:
 ```text
 mysql-secret
 ```
-
 
 ```bash
 kubectl create secret generic mysql-secret \
@@ -160,114 +356,171 @@ Verify:
 ```bash
 kubectl get secrets -n devops-todo
 ```
+
 ![alt](ScreenShots/secrets.png)
 
 ---
 
+# 8. Deploy the PHP Application
 
-6. Deploy the PHP Application
-Now we deploy the PHP app. Look at the deployment.yaml file. It contains instructions for Kubernetes. Let's apply it:
+Now we deploy the PHP app. Look at the `deployment.yaml` file. It contains instructions for Kubernetes. Let's apply it:
 
-bash
+```bash
 kubectl apply -f Kubernetes/deployment.yaml
-Expected Output: deployment.apps/todo-app created
+```
 
-⚙️ Understanding the Deployment Settings
+**Expected Output:**
+
+```text
+deployment.apps/todo-app created
+```
+
+## ⚙️ Understanding the Deployment Settings
+
 In this file, we defined several important settings:
 
-Replicas: 3: Kubernetes will create 3 identical copies (Pods) of your PHP container. If one fails, the other two keep the site running.
+**Replicas: 3:** Kubernetes will create 3 identical copies (Pods) of your PHP container. If one fails, the other two keep the site running.
 
-Resources:
+**Resources:**
 
-requests: The minimum resources guaranteed to the container. (100m CPU = 10% of a core, 128Mi RAM).
+* **requests:** The minimum resources guaranteed to the container. (`100m` CPU = 10% of a core, `128Mi` RAM).
 
-limits: The maximum resources the container can use before it gets throttled or killed. (500m CPU = 50% of a core, 256Mi RAM).
+* **limits:** The maximum resources the container can use before it gets throttled or killed. (`500m` CPU = 50% of a core, `256Mi` RAM).
 
-ReadinessProbe: Kubernetes checks if the app is ready to receive traffic before sending users to it. It waits 5 seconds, then checks every 10 seconds.
+**ReadinessProbe:** Kubernetes checks if the app is ready to receive traffic before sending users to it. It waits 5 seconds, then checks every 10 seconds.
 
-LivenessProbe: Kubernetes checks if the app is still alive. If it freezes, Kubernetes will restart it. It waits 15 seconds, then checks every 20 seconds.
+**LivenessProbe:** Kubernetes checks if the app is still alive. If it freezes, Kubernetes will restart it. It waits 15 seconds, then checks every 20 seconds.
 
 Verify the Pods are running:
 
-bash
+```bash
 kubectl get pods -n devops-todo
+```
+
 ![alt](ScreenShots/pods.png)
 
+---
 
-7. Expose the PHP Application (Service)
+# 9. Expose the PHP Application (Service)
+
 Right now, your PHP pods are running, but they are only accessible inside the cluster. To access them from your web browser, we need a Service.
 
-We use a NodePort service, which opens a specific port on every node in the cluster (e.g., 30080) and forwards traffic to port 80 inside our containers.
+We use a `NodePort` service, which opens a specific port on every node in the cluster (e.g., `30080`) and forwards traffic to port `80` inside our containers.
 
 Apply the service:
 
-bash
+```bash
 kubectl apply -f Kubernetes/service.yaml
-Expected Output: service/todo-service created
+```
+
+**Expected Output:**
+
+```text
+service/todo-service created
+```
 
 Verify the Service:
 
-bash
+```bash
 kubectl get service -n devops-todo
-You should see todo-service. Notice the PORT(S) column says 80:30080/TCP. This means port 80 inside the cluster is mapped to port 30080 on your local machine.
+```
+
+You should see `todo-service`. Notice the `PORT(S)` column says `80:30080/TCP`. This means port `80` inside the cluster is mapped to port `30080` on your local machine.
+
 ![alt](ScreenShots/service.png)
 
-Check Endpoints:
+## Check Endpoints
+
 A service routes traffic to specific Pod IPs. To verify it found our 3 PHP pods:
 
-bash
+```bash
 kubectl get endpoints -n devops-todo
+```
 
 ![alt](ScreenShots/endpoints.png)
 
-===================================================================================================
-==========================================================================
 
-8. Deploy MySQL Database and pvc
+# 10. Deploy MySQL Database and PVC
+
 Now we need our database. We will deploy MySQL and a Service for it.
-Note: We do not expose MySQL with a NodePort. It should only be accessible internally by our PHP app for security reasons.
 
-First, we apply the PVC(volume) file. This asks Kubernetes to allocate 1 Gigabyte of storage for our database.
+> **Note:** We do not expose MySQL with a `NodePort`. It should only be accessible internally by our PHP app for security reasons.
 
-bash
+First, we apply the PVC (volume) file. This asks Kubernetes to allocate **1 Gigabyte** of storage for our database.
+
+```bash
 kubectl apply -f Kubernetes/mysql-pvc.yaml
-
+```
 
 Verify the PVC is bound:
 
-bash
+```bash
 kubectl get pvc -n devops-todo
-You should see mysql-pvc with a STATUS of Bound. This means Kubernetes successfully found and attached the storage.
+```
+
+You should see `mysql-pvc` with a `STATUS` of `Bound`. This means Kubernetes successfully found and attached the storage.
 
 Apply the MySQL deployment and service:
 
-bash
+```bash
 kubectl apply -f Kubernetes/mysql-deployment.yaml
-kubectl apply -f Kubernetes/mysql-service.yaml
 
-![img](ScreenShots/mysql%20deployment.png)
+kubectl apply -f Kubernetes/mysql-service.yaml
+```
+
+![MySQL Deployment](ScreenShots/mysql%20deployment.png)
 
 Verify MySQL is running:
 
-bash
+```bash
 kubectl get pods -n devops-todo
-You should now see a mysql-xxxxx pod running alongside your 3 PHP pods.
+```
 
-# Jenkins SetUp
-Go to your browser Jenkins: ip:8081
-create new job make sure you select pipline job and name it 'devops-php-todo'
-and then check the github under resource and paste you github repo link
-and under check scm poll git and make the branch */main and then the jenkins file path which is our located under root directory. 
-our jenkins what it will do is as it stated under jenkinsfile. it check scm and then build an img root img from our local or if not there get it from our dockerhub, then login to dockerhub then push the img with version attached on it which is the build number i use, and then set the build img of the k8s to the new one and finally logout to dockerhub. 
+You should now see a `mysql-xxxxx` Pod running alongside your 3 PHP Pods.
 
-so and then click build now and check the log for sucessmessage if it sucesses check your dockerhub account if the new push exsist. 
+---
 
-![img](ScreenShots/create%20jenkins%20job.png)
+# 11. Jenkins Setup
 
-![img](ScreenShots/jenkins%20container%20build.png)
+Go to Jenkins in your browser:
 
+```text
+http://<IP>:8081
+```
 
+Create a new job. Make sure you select **Pipeline** as the job type and name it:
 
+```text
+devops-php-todo
+```
+
+Then, under **Pipeline**, select **Pipeline script from SCM** and choose **Git**.
+
+Paste your GitHub repository URL:
+
+```text
+https://github.com/Tamiru-Assefa/devops-php-todo.git
+```
+
+Under **Branch Specifier**, set the branch to:
+
+```text
+*/main
+```
+
+Then specify the **Jenkinsfile** path. Our `Jenkinsfile` is located in the root directory of the repository.
+
+Our Jenkins pipeline performs the tasks defined in the `Jenkinsfile`. It checks out the source code, builds the Docker image from the project, logs in to Docker Hub, and pushes the image with a version tag based on the Jenkins build number.
+
+After pushing the new image, Jenkins updates the Kubernetes deployment to use the newly built image and finally logs out of Docker Hub.
+
+Click **Build Now** and check the build log for a successful completion message.
+
+If the build succeeds, check your Docker Hub repository and verify that the newly pushed image exists.
+
+![Create Jenkins Job](ScreenShots/create%20jenkins%20job.png)
+
+![Jenkins Container Build](ScreenShots/jenkins%20container%20build.png)
 
 
 
