@@ -1,7 +1,7 @@
 Kubernetes Deployment Guide
 This document explains how to deploy the PHP Todo web application and its MySQL database onto the Kubernetes cluster we prepared in the previous document.
 
-It is written for someone who is new to DevOps. It explains what each command does, how the application is structured, and how to verify that everything is working correctly.
+
 
 1. Introduction
 At this point, you should have a working Kubernetes cluster with 3 nodes (desktop-control-plane, desktop-worker, desktop-worker2).
@@ -14,57 +14,156 @@ MySQL Database: Where the Todo tasks are permanently stored.
 
 To make this robust, we will deploy 3 replicas of the PHP app (so if one crashes, the app stays online) and 1 replica of MySQL (backed by persistent storage).
 
-Where to run these commands?
-You will run all of these commands from your local terminal (PowerShell on Windows) where you have kubectl configured to talk to your cluster. You do not need to SSH into the master node.
+# 2.  Get the Application Source Code
 
-2. Clone the Project
-First, we need to get the application code onto our machine. We do this by cloning the GitHub repository.
+The PHP Todo application is stored in GitHub.
 
-Open your terminal and run:
+Repository:
 
-bash
+```text
+https://github.com/Tamiru-Assefa/devops-php-todo
+```
+
+```bash
 git clone https://github.com/Tamiru-Assefa/devops-php-todo.git
+```
+
+Then:
+
+```bash
 cd devops-php-todo
-3. Create the Namespace
-A namespace in Kubernetes is like a virtual cluster inside your physical cluster. It allows us to isolate our project from other projects so we don't accidentally delete someone else's work.
+```
 
-We have a namespace.yaml file in our Kubernetes directory. Let's apply it:
+Verify the Kubernetes directory:
 
-bash
-kubectl apply -f Kubernetes/namespace.yaml
-Expected Output: namespace/devops-todo created
+```bash
+kubectl get nodes
+```
 
-Verify it was created:
+![alt text](ScreenShots/gitclone.png)
 
-bash
-kubectl get namespaces
-You should see devops-todo in the list with a status of Active.
+Later, Jenkins will clone the same repository automatically during the CI/CD pipeline.
 
-4. Log in to Docker Hub
-Our PHP application needs to be packaged as a Docker image. Even though we built it locally, Jenkins will eventually push it to Docker Hub. For now, let's log in to your Docker Hub account from the terminal so Kubernetes has permission to pull the image.
+---
 
-bash
+# 3. Build Jenkins Container on the Control Plane
+
+ So what we will do is build the DockerFile found in Jenkins directory.
+
+ ```bash
+cd Jenkins
+docker build -t devops-jenkins:1.0
+ ```
+![alt text](ScreenShots/jenkins%20container%20build.png)
+
+Next we build a volume for the Jenkins Container; incase the container fail the data like installed plugins and Job are not get lost. 
+
+```bash
+docker volume create jenkins_home
+```
+Next we run the container on the port 8081 which is forwarded to jenkins port 8080 and mount the volume.
+
+```bash
+docker run -d --name jenkins -p 8081:8080 -v jenkins_home:/var/jenkins_home devops-jenkins:1.0
+```
+---
+
+# 4. 🌐 Verify Jenkins & Docker Login
+
+Open Jenkins from your browser:
+
+```text
+http://<ip>:8081
+```
+
+Then login to jenkins(follow the instruction found on the ui).
+Install suggested Plugins.
+
+## Docker Hub Login
+We have to Login to our dockerhub account so every build container are going to be stored on the remote repo. 
+And we create credential token on dockerhub and connect it to our jenkins service. so Jenkins can push the images with out any barrier. 
+
+```bash
 docker login
-Enter your Docker Hub username and password when prompted.
+```
+---
 
-5. Create the Database Secret
-We never want to hardcode database passwords in our application code or YAML files. Instead, we store them in a Kubernetes Secret.
 
-Run this command to create the secret for our MySQL database (this matches the exact command in your screenshots):
 
-bash
-kubectl create secret generic mysql-secret `
-  --from-literal=MYSQL_ROOT_PASSWORD=rootpassword `
-  --from-literal=MYSQL_USER=root `
-  --from-literal=MYSQL_PASSWORD=rootpassword `
+
+
+
+
+
+
+
+
+here we build the img and push it to the repo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 10.  Create the Kubernetes Namespace
+
+Now we begin creating Kubernetes resources.
+
+Creating devops-todo namespace. Namespace help us to logically separate this projects setup from the others.
+
+```bash
+kubectl apply -f Kubernetes/namespace.yaml
+```
+
+Verify:
+
+```bash
+kubectl get namespaces
+```
+
+![alr text](ScreenShots/namespace.png)
+
+---
+
+# 11.  Create the MySQL Secret
+
+The database credentials should not be written directly into the application configuration.
+
+Kubernetes Secrets allow us to store sensitive configuration separately.
+
+Our Secret name will be:
+
+```text
+mysql-secret
+```
+
+
+```bash
+kubectl create secret generic mysql-secret \
+  --from-literal=MYSQL_ROOT_PASSWORD=rootpassword \
+  --from-literal=MYSQL_USER=root \
+  --from-literal=MYSQL_PASSWORD=rootpassword \
   -n devops-todo
-(Note: If you are on Linux/Mac, replace the backticks with backslashes` for line continuation).
+```
 
-Verify the secret exists:
+Verify:
 
-bash
-kubectl get secret -n devops-todo
-You should see mysql-secret with a type of Opaque.
+```bash
+kubectl get secrets -n devops-todo
+```
+![alt](ScreenShots/secrets.png)
+
+---
+
 
 6. Deploy the PHP Application
 Now we deploy the PHP app. Look at the deployment.yaml file. It contains instructions for Kubernetes. Let's apply it:
@@ -92,7 +191,8 @@ Verify the Pods are running:
 
 bash
 kubectl get pods -n devops-todo
-You should see 3 todo-app-xxxxx pods with 1/1 in the READY column and Running in the STATUS column.
+![alt](ScreenShots/pods.png)
+
 
 7. Expose the PHP Application (Service)
 Right now, your PHP pods are running, but they are only accessible inside the cluster. To access them from your web browser, we need a Service.
@@ -110,24 +210,28 @@ Verify the Service:
 bash
 kubectl get service -n devops-todo
 You should see todo-service. Notice the PORT(S) column says 80:30080/TCP. This means port 80 inside the cluster is mapped to port 30080 on your local machine.
+![alt](ScreenShots/service.png)
 
 Check Endpoints:
 A service routes traffic to specific Pod IPs. To verify it found our 3 PHP pods:
 
 bash
 kubectl get endpoints -n devops-todo
-Note: You might see a warning that Endpoints are deprecated in v1.33+. This is normal. Kubernetes is transitioning to EndpointSlices, but the functionality is exactly the same.
-You should see 3 IP addresses listed under ENDPOINTS. These are your 3 PHP pods!
+
+![alt](ScreenShots/endpoints.png)
+
+===================================================================================================
+==========================================================================
 
 8. Deploy MySQL Database and pvc
 Now we need our database. We will deploy MySQL and a Service for it.
 Note: We do not expose MySQL with a NodePort. It should only be accessible internally by our PHP app for security reasons.
 
-First, we apply the PVC file. This asks Kubernetes to allocate 1 Gigabyte of storage for our database.
+First, we apply the PVC(volume) file. This asks Kubernetes to allocate 1 Gigabyte of storage for our database.
 
 bash
 kubectl apply -f Kubernetes/mysql-pvc.yaml
-Expected Output: persistentvolumeclaim/mysql-pvc created
+
 
 Verify the PVC is bound:
 
@@ -140,9 +244,8 @@ Apply the MySQL deployment and service:
 bash
 kubectl apply -f Kubernetes/mysql-deployment.yaml
 kubectl apply -f Kubernetes/mysql-service.yaml
-Expected Output:
-deployment.apps/mysql created
-service/db created
+
+![img](ScreenShots/mysql%20deployment.png)
 
 Verify MySQL is running:
 
@@ -150,8 +253,18 @@ bash
 kubectl get pods -n devops-todo
 You should now see a mysql-xxxxx pod running alongside your 3 PHP pods.
 
+# Jenkins SetUp
+Go to your browser Jenkins: ip:8081
+create new job make sure you select pipline job and name it 'devops-php-todo'
+and then check the github under resource and paste you github repo link
+and under check scm poll git and make the branch */main and then the jenkins file path which is our located under root directory. 
+our jenkins what it will do is as it stated under jenkinsfile. it check scm and then build an img root img from our local or if not there get it from our dockerhub, then login to dockerhub then push the img with version attached on it which is the build number i use, and then set the build img of the k8s to the new one and finally logout to dockerhub. 
 
+so and then click build now and check the log for sucessmessage if it sucesses check your dockerhub account if the new push exsist. 
 
+![img](ScreenShots/create%20jenkins%20job.png)
+
+![img](ScreenShots/jenkins%20container%20build.png)
 
 
 
@@ -183,7 +296,7 @@ The final monitoring architecture is:
         192.168.1.10         192.168.1.11      192.168.1.12
              │                  │                  │
              │                  │                  │
-             │             cAdvisor            cAdvisor
+             |            cAdvisor            cAdvisor
              │                  │                  │
              └──────────────────┼──────────────────┘
                                 │
@@ -298,84 +411,6 @@ Kubernetes object/state metrics
 
 ---
 
-# 3. Where Commands Are Run
-
-For this project, Kubernetes administration is performed from:
-
-```text
-Server:
-desktop-control-plane
-
-IP:
-192.168.1.10
-```
-
-SSH into the control plane:
-
-```bash
-ssh <your-user>@192.168.1.10
-```
-
-Verify:
-
-```bash
-hostname
-```
-
-Expected:
-
-```text
-desktop-control-plane
-```
-
-All `kubectl` commands in this document should be executed on:
-
-```text
-desktop-control-plane
-```
-
-The worker nodes:
-
-```text
-desktop-worker
-192.168.1.11
-
-desktop-worker2
-192.168.1.12
-```
-
-are managed by Kubernetes.
-
-You normally **do not manually deploy monitoring components on the workers**.
-
-Kubernetes schedules the required Pods there.
-
----
-
-# 4. Verify the Kubernetes Cluster
-
-## Run on: `desktop-control-plane`
-
-```bash
-kubectl get nodes -o wide
-```
-
-Expected:
-
-```text
-NAME                    STATUS   ROLES           INTERNAL-IP
-desktop-control-plane   Ready    control-plane   192.168.1.10
-desktop-worker          Ready    <none>          192.168.1.11
-desktop-worker2         Ready    <none>          192.168.1.12
-```
-
-All nodes should show:
-
-```text
-Ready
-```
-
----
 
 # 5. Create the Monitoring Namespace
 
@@ -403,13 +438,6 @@ Create the namespace:
 kubectl create namespace monitoring
 ```
 
-If it already exists, Kubernetes may return:
-
-```text
-Error from server (AlreadyExists)
-```
-
-That is not a problem.
 
 Verify:
 
@@ -417,15 +445,7 @@ Verify:
 kubectl get namespaces
 ```
 
-You should see:
-
-```text
-default
-devops-todo
-monitoring
-kube-system
-...
-```
+![img](ScreenShots/monitoring%20namespace.png)
 
 ---
 
@@ -525,8 +545,6 @@ It defines:
 * kube-state-metrics targets
 * Other monitoring endpoints
 
-## Run on: `desktop-control-plane`
-
 ```bash
 kubectl apply -f Kubernetes/prometheus-config.yaml
 ```
@@ -557,7 +575,6 @@ kubectl get configmap prometheus-config \
 
 The Prometheus Deployment creates the Prometheus Pod.
 
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl apply -f Kubernetes/prometheus-deployment.yaml
@@ -569,12 +586,7 @@ Verify:
 kubectl get deployments -n monitoring
 ```
 
-Expected:
 
-```text
-NAME         READY   UP-TO-DATE   AVAILABLE
-prometheus   1/1     1            1
-```
 
 Check the Pod:
 
@@ -582,57 +594,11 @@ Check the Pod:
 kubectl get pods -n monitoring -o wide
 ```
 
-You should see something similar to:
-
-```text
-prometheus-xxxxx   1/1   Running   ...   desktop-worker
-```
-
-The exact node can vary because Kubernetes chooses where to schedule the Pod.
-
----
-
-# 10. Verify Prometheus Logs
-
-If the Pod is running but Prometheus does not appear to work, check its logs.
-
-## Run on: `desktop-control-plane`
-
-First get the Pod name:
-
-```bash
-kubectl get pods -n monitoring
-```
-
-Then:
-
-```bash
-kubectl logs -n monitoring <prometheus-pod-name>
-```
-
-For example:
-
-```bash
-kubectl logs -n monitoring prometheus-xxxxx
-```
-
-Look for errors involving:
-
-```text
-configuration
-RBAC
-permission denied
-scrape
-connection refused
-```
-
----
 
 # 11. Expose Prometheus
 
 Create the Prometheus Service:
 
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl apply -f Kubernetes/prometheus-service.yaml
@@ -644,12 +610,6 @@ Verify:
 kubectl get service -n monitoring
 ```
 
-Expected:
-
-```text
-NAME         TYPE       CLUSTER-IP    PORT(S)
-prometheus   NodePort   10.x.x.x      9090:30090/TCP
-```
 
 The mapping:
 
@@ -663,7 +623,8 @@ means:
 Container/Service Port: 9090
 NodePort:              30090
 ```
-
+![img](ScreenShots/prometheus-apply.png)
+![img](ScreenShots/prometheus-get.png)
 ---
 
 # 12. Access Prometheus
@@ -671,22 +632,20 @@ NodePort:              30090
 From your computer's browser:
 
 ```text
-http://192.168.1.10:30090
+http://ip-server-1:30090
 ```
 
 You can also try:
 
 ```text
-http://192.168.1.11:30090
+http://ip-server-2:30090
 ```
 
 or:
 
 ```text
-http://192.168.1.12:30090
+http://ip-server-3:30090
 ```
-
-depending on your network configuration.
 
 The Prometheus interface should open.
 
@@ -715,6 +674,7 @@ If a target shows:
 ```text
 DOWN
 ```
+![img](ScreenShots/prometheus-ui.png)
 
 do not continue directly to Grafana.
 
@@ -734,7 +694,6 @@ kube_deployment_status_replicas_available
 
 may return no data.
 
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl apply -f Kubernetes/kube-state-metrics.yaml
@@ -754,15 +713,7 @@ kube-state-metrics-xxxxx   1/1   Running
 
 Verify its Service:
 
-```bash
-kubectl get service -n monitoring
-```
 
-You should see:
-
-```text
-kube-state-metrics
-```
 
 ---
 
@@ -824,7 +775,7 @@ desktop-worker2
 
 However, kubeadm control-plane nodes normally have a taint that prevents ordinary workloads from being scheduled there.
 
-Therefore, depending on the `cadvisor.yaml` configuration, cAdvisor may run on:
+Therefore
 
 ```text
 desktop-worker
@@ -870,12 +821,8 @@ NAME       DESIRED   CURRENT   READY
 cadvisor   2         2         2
 ```
 
-or, if the control plane is also tolerated:
 
-```text
-NAME       DESIRED   CURRENT   READY
-cadvisor   3         3         3
-```
+
 
 ---
 
@@ -883,7 +830,6 @@ cadvisor   3         3         3
 
 This is important.
 
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl get pods -n monitoring -o wide
@@ -897,14 +843,7 @@ cadvisor-xxxxx    1/1     Running   desktop-worker
 cadvisor-yyyyy    1/1     Running   desktop-worker2
 ```
 
-If configured to run on the control plane:
 
-```text
-NAME              READY   STATUS    NODE
-cadvisor-xxxxx    1/1     Running   desktop-control-plane
-cadvisor-yyyyy    1/1     Running   desktop-worker
-cadvisor-zzzzz    1/1     Running   desktop-worker2
-```
 
 ---
 
@@ -999,7 +938,6 @@ Grafana
 
 Grafana sends PromQL queries to Prometheus.
 
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl apply -f Kubernetes/grafana-deployment.yaml
@@ -1011,41 +949,14 @@ Verify:
 kubectl get deployment -n monitoring
 ```
 
-Expected:
-
-```text
-grafana   1/1   1   1
-```
-
-Check the Pod:
-
-```bash
-kubectl get pods -n monitoring -o wide
-```
+![img](ScreenShots/grafana%20deplyment.png)
 
 ---
 
-# 23. Check Grafana Logs
-
-If Grafana does not start:
-
-```bash
-kubectl logs -n monitoring deployment/grafana
-```
-
-You can also inspect the Deployment:
-
-```bash
-kubectl describe deployment grafana -n monitoring
-```
-
----
 
 # 24. Expose Grafana
 
 Apply the Service:
-
-## Run on: `desktop-control-plane`
 
 ```bash
 kubectl apply -f Kubernetes/grafana-service.yaml
@@ -1056,20 +967,7 @@ Verify:
 ```bash
 kubectl get service -n monitoring
 ```
-
-Expected:
-
-```text
-NAME      TYPE       CLUSTER-IP    PORT(S)
-grafana   NodePort   10.x.x.x      3000:30300/TCP
-```
-
-This means:
-
-```text
-Grafana Service Port: 3000
-NodePort:             30300
-```
+![img](ScreenShots/grafana%20deplyment.png)
 
 ---
 
@@ -1078,35 +976,15 @@ NodePort:             30300
 Open:
 
 ```text
-http://192.168.1.10:30300
+http://ip-of-any-server:30300
 ```
 
-You can also try:
-
-```text
-http://192.168.1.11:30300
-```
-
-or:
-
-```text
-http://192.168.1.12:30300
-```
-
-depending on your network.
 
 ---
 
 # 26. Grafana Login
 
-If the Deployment explicitly configures:
-
-```text
-GF_SECURITY_ADMIN_USER=admin
-GF_SECURITY_ADMIN_PASSWORD=admin
-```
-
-then the initial credentials are:
+The initial credentials are:
 
 ```text
 Username:
@@ -1116,11 +994,9 @@ Password:
 admin
 ```
 
-If your manifest does not define these environment variables, check the actual credentials configured in your Grafana deployment.
 
 After logging in, change the default password.
 
-> Do not use `admin/admin` for a publicly exposed production Grafana instance.
 
 ---
 
@@ -1136,86 +1012,7 @@ Plugins
 Grafana settings
 ```
 
-Therefore, production-style deployments should use persistent storage instead of relying only on the container filesystem.
 
-Check whether the Grafana deployment already uses a PVC:
-
-```bash
-kubectl get pvc -n monitoring
-```
-
-If a Grafana PVC exists, verify:
-
-```text
-STATUS = Bound
-```
-
-For example:
-
-```text
-NAME            STATUS   VOLUME
-grafana-pvc     Bound    pvc-xxxxx
-```
-
----
-
-# 28. Persistent Prometheus Storage
-
-Prometheus also benefits from persistent storage.
-
-Without persistence, deleting/recreating the Prometheus Pod can remove its locally stored historical metrics.
-
-Check:
-
-```bash
-kubectl get pvc -n monitoring
-```
-
-If Prometheus has a PVC:
-
-```text
-prometheus-pvc   Bound
-```
-
-then historical metrics can survive Pod recreation, subject to the storage configuration and retention policy.
-
----
-
-# 29. Check the StorageClass
-
-If a PVC remains:
-
-```text
-Pending
-```
-
-check the available StorageClasses.
-
-## Run on: `desktop-control-plane`
-
-```bash
-kubectl get storageclass
-```
-
-Check PersistentVolumes:
-
-```bash
-kubectl get pv
-```
-
-Check PersistentVolumeClaims:
-
-```bash
-kubectl get pvc -n monitoring
-```
-
-A PVC should eventually become:
-
-```text
-Bound
-```
-
----
 
 # 30. Connect Grafana to Prometheus
 
@@ -1243,11 +1040,6 @@ Prometheus
 
 For the URL, use the Kubernetes Service name.
 
-If Grafana and Prometheus are both in:
-
-```text
-monitoring
-```
 
 use:
 
@@ -1280,45 +1072,6 @@ You should receive a successful connection message.
 
 ---
 
-# 31. Why We Do Not Use the NodePort for Grafana → Prometheus
-
-The browser uses:
-
-```text
-192.168.1.10:30300
-```
-
-to access Grafana.
-
-But Grafana itself should use the internal Kubernetes Service:
-
-```text
-http://prometheus:9090
-```
-
-rather than:
-
-```text
-http://192.168.1.10:30090
-```
-
-Internal communication should use Kubernetes Services whenever possible.
-
-Therefore:
-
-```text
-Browser
-   ↓
-192.168.1.10:30300
-   ↓
-Grafana
-   ↓
-http://prometheus:9090
-   ↓
-Prometheus
-```
-
----
 
 # 32. Verify the Prometheus Data Source
 
@@ -1361,7 +1114,7 @@ Before creating Grafana panels, verify that Prometheus actually has data.
 Open Prometheus:
 
 ```text
-http://192.168.1.10:30090
+http://ip:30090
 ```
 
 Go to:
@@ -1403,7 +1156,7 @@ You can also test:
 ```promql
 container_memory_working_set_bytes
 ```
-
+![img](ScreenShots/prometheus-check.png)
 ---
 
 # 35. Test Kubernetes State Metrics
@@ -1455,6 +1208,8 @@ Prometheus
 
 We will create four main panels.
 
+![img](ScreenShots/grafana%20dashboard.png)
+
 ---
 
 # 37. Panel 1 — PHP Todo CPU Usage
@@ -1502,43 +1257,7 @@ depending on how you want the value displayed.
 
 ---
 
-# 38. Understanding the CPU Query
 
-The important metric is:
-
-```text
-container_cpu_usage_seconds_total
-```
-
-This is a cumulative counter.
-
-Therefore we use:
-
-```promql
-rate(...[5m])
-```
-
-to calculate the CPU usage rate over the previous five minutes.
-
-Then:
-
-```promql
-sum by (pod)
-```
-
-groups the result by PHP Pod.
-
-Therefore, if you have:
-
-```text
-todo-app-aaa
-todo-app-bbb
-todo-app-ccc
-```
-
-Grafana can show CPU usage separately for each Pod.
-
----
 
 # 39. Panel 2 — PHP Todo Memory Usage
 
@@ -1611,6 +1330,7 @@ sum by (pod)
 so each PHP Pod gets its own series.
 
 This lets you identify whether one replica is consuming significantly more memory than the others.
+![img](ScreenShots/grafana-memory-usage.png)
 
 ---
 
@@ -1715,6 +1435,7 @@ If it reaches:
 
 the application has no available PHP replicas.
 
+
 ---
 
 # 43. Add Desired Replica Count
@@ -1755,136 +1476,16 @@ PHP Todo Desired vs Available Replicas
 
 This makes Kubernetes availability easier to understand.
 
----
-
-# 44. Add Pod Restart Monitoring
-
-Another useful panel is Pod restarts.
-
-Use:
-
-```promql
-sum by (pod) (
-  kube_pod_container_status_restarts_total{
-    namespace="devops-todo"
-  }
-)
-```
-
-Visualization:
-
-```text
-Time series
-```
-
-Title:
-
-```text
-PHP Todo Pod Restarts
-```
-
-A continuously increasing restart count can indicate application crashes, configuration problems, resource pressure, or other failures.
+![img](ScreenShots/grafana-pod-count.png)
 
 ---
 
-# 45. Add Node CPU Monitoring
 
-To monitor the Kubernetes nodes themselves, you can create a node-level panel.
 
-For example, depending on the available node metrics:
-
-```promql
-100 * (
-  1 - avg by (instance) (
-    rate(node_cpu_seconds_total{mode="idle"}[5m])
-  )
-)
-```
-
-Visualization:
-
-```text
-Time series
-```
-
-Title:
-
-```text
-Kubernetes Node CPU Usage
-```
-
-> This query requires node-exporter-style metrics. If your current Prometheus configuration does not scrape node-exporter, this panel will not return data. In that case, deploy node-exporter or use the node metrics already available in your configuration.
-
----
-
-# 46. Add Node Memory Monitoring
-
-Similarly, node-level memory monitoring can be provided using node-exporter metrics.
-
-Example:
-
-```promql
-100 * (
-  1 -
-  (
-    node_memory_MemAvailable_bytes /
-    node_memory_MemTotal_bytes
-  )
-)
-```
-
-Visualization:
-
-```text
-Time series
-```
-
-Title:
-
-```text
-Kubernetes Node Memory Usage
-```
-
-Again, this requires the relevant node-exporter metrics to be available.
-
----
-
-# 47. Recommended Dashboard Layout
-
-A useful dashboard structure is:
-
-```text
-┌───────────────────────────────┬───────────────────────────────┐
-│ PHP Todo CPU Usage            │ PHP Todo Memory Usage         │
-│                               │                               │
-│          Time Series          │          Time Series          │
-├───────────────────────────────┼───────────────────────────────┤
-│ Current CPU by Pod            │ Available PHP Replicas        │
-│                               │                               │
-│          Bar Chart            │          Time Series          │
-├───────────────────────────────┼───────────────────────────────┤
-│ Pod Restarts                  │ Desired vs Available          │
-│                               │ Replicas                       │
-│          Time Series          │          Time Series          │
-└───────────────────────────────┴───────────────────────────────┘
-```
-
-This provides both:
-
-```text
-Resource monitoring
-```
-
-and:
-
-```text
-Application/Kubernetes health monitoring
-```
-
----
 
 # 48. Save the Dashboard
 
+You can add any kind of custom panel.
 Once the panels are complete:
 
 ```text
@@ -1894,7 +1495,7 @@ Save dashboard
 Use:
 
 ```text
-PHP Todo Application Monitoring
+K8s Todo App Monitoring
 ```
 
 as the dashboard name.
@@ -1905,52 +1506,12 @@ The dashboard should contain at least:
 2. PHP Todo Memory Usage
 3. Current CPU Usage by Pod
 4. Available PHP Replicas
-5. Pod Restarts
-6. Desired vs Available Replicas
+....
 
+![img](ScreenShots/grafana-overall1.png)
+![img](ScreenShots/grafana-overall2.png)
 ---
 
-# 49. Verify Monitoring From Kubernetes
-
-## Run on: `desktop-control-plane`
-
-Check all monitoring Pods:
-
-```bash
-kubectl get pods -n monitoring -o wide
-```
-
-Check Deployments:
-
-```bash
-kubectl get deployments -n monitoring
-```
-
-Check DaemonSets:
-
-```bash
-kubectl get daemonsets -n monitoring
-```
-
-Check Services:
-
-```bash
-kubectl get services -n monitoring
-```
-
-Check PVCs:
-
-```bash
-kubectl get pvc -n monitoring
-```
-
-A useful complete command is:
-
-```bash
-kubectl get all -n monitoring
-```
-
----
 
 # 50. Expected Monitoring Components
 
@@ -2171,197 +1732,7 @@ If monitoring the control plane is required, the cAdvisor DaemonSet needs an app
 
 ---
 
-# 56. Troubleshooting — Grafana Page Does Not Open
 
-Check the Service:
-
-```bash
-kubectl get svc grafana -n monitoring
-```
-
-Verify the NodePort:
-
-```text
-3000:30300/TCP
-```
-
-Check the Pod:
-
-```bash
-kubectl get pods -n monitoring -l app=grafana
-```
-
-Check logs:
-
-```bash
-kubectl logs -n monitoring deployment/grafana
-```
-
-Then try:
-
-```text
-http://192.168.1.10:30300
-```
-
----
-
-# 57. Troubleshooting — Prometheus Query Returns No Results
-
-First determine which component should provide the metric.
-
-For container metrics:
-
-```text
-cAdvisor
-```
-
-For Kubernetes object metrics:
-
-```text
-kube-state-metrics
-```
-
-For node-exporter metrics:
-
-```text
-node-exporter
-```
-
-For example:
-
-```promql
-container_memory_working_set_bytes
-```
-
-requires container metrics.
-
-Whereas:
-
-```promql
-kube_deployment_status_replicas_available
-```
-
-requires kube-state-metrics.
-
----
-
-# 58. Monitoring Validation Test
-
-After the monitoring stack is running, perform a complete test.
-
-## Step 1 — Verify PHP Pods
-
-```bash
-kubectl get pods -n devops-todo -o wide
-```
-
-You should see your PHP replicas.
-
----
-
-## Step 2 — Open Grafana
-
-```text
-http://192.168.1.10:30300
-```
-
----
-
-## Step 3 — Open the Monitoring Dashboard
-
-Open:
-
-```text
-PHP Todo Application Monitoring
-```
-
----
-
-## Step 4 — Verify CPU
-
-The PHP Pods should appear in:
-
-```text
-PHP Todo CPU Usage
-```
-
----
-
-## Step 5 — Verify Memory
-
-The PHP Pods should appear in:
-
-```text
-PHP Todo Memory Usage
-```
-
----
-
-## Step 6 — Verify Replicas
-
-The dashboard should show:
-
-```text
-Available PHP Replicas = 3
-```
-
-when all three application replicas are healthy.
-
----
-
-## Step 7 — Verify Restarts
-
-Check:
-
-```text
-PHP Todo Pod Restarts
-```
-
-This should allow you to see whether Pods have restarted.
-
----
-
-# 59. Test Kubernetes Monitoring During a Deployment
-
-This is especially useful because the project already has Jenkins CI/CD.
-
-Run a Jenkins deployment.
-
-The flow is:
-
-```text
-GitHub
-   ↓
-Jenkins
-   ↓
-Docker Build
-   ↓
-Docker Hub
-   ↓
-kubectl set image
-   ↓
-Kubernetes Rolling Update
-   ↓
-New PHP Pods
-   ↓
-Prometheus
-   ↓
-Grafana
-```
-
-During the deployment, Grafana can show changes in:
-
-```text
-CPU
-Memory
-Pod availability
-Pod restarts
-Replica availability
-```
-
-This demonstrates that the monitoring system is actually observing the application rather than simply displaying static dashboards.
-
----
 
 # 60. Final Monitoring Architecture
 
@@ -2411,163 +1782,8 @@ The completed DevOps environment now looks like:
 
 ---
 
-# 61. Final Monitoring Checklist
 
-Before considering monitoring complete, verify:
+The only thing left now is add webhook to jenkins so we don't have to click build button on jenkins, Jenkins will automatically triggered when there is new push to the github. 
+So To do that check out the next file name with 'Jenkins Automation.md'
 
-### Kubernetes
-
-```bash
-kubectl get nodes
-```
-
-All three nodes:
-
-```text
-Ready
-```
-
-### Monitoring Namespace
-
-```bash
-kubectl get namespace monitoring
-```
-
-### Prometheus
-
-```bash
-kubectl get deployment prometheus -n monitoring
-```
-
-### Grafana
-
-```bash
-kubectl get deployment grafana -n monitoring
-```
-
-### cAdvisor
-
-```bash
-kubectl get daemonset cadvisor -n monitoring
-```
-
-### kube-state-metrics
-
-```bash
-kubectl get deployment kube-state-metrics -n monitoring
-```
-
-### Monitoring Services
-
-```bash
-kubectl get svc -n monitoring
-```
-
-### Monitoring Pods
-
-```bash
-kubectl get pods -n monitoring -o wide
-```
-
-### Prometheus
-
-Open:
-
-```text
-http://192.168.1.10:30090
-```
-
-### Grafana
-
-Open:
-
-```text
-http://192.168.1.10:30300
-```
-
-### Prometheus Query Test
-
-```promql
-up
-```
-
-### Container Metrics Test
-
-```promql
-container_memory_working_set_bytes
-```
-
-### Kubernetes State Metrics Test
-
-```promql
-kube_deployment_status_replicas_available{
-  namespace="devops-todo",
-  deployment="todo-app"
-}
-```
-
----
-
-# 62. What This Project Now Demonstrates
-
-With Jenkins, Docker, Kubernetes, Prometheus, Grafana, cAdvisor, and kube-state-metrics, the project demonstrates a complete DevOps workflow:
-
-```text
-                    DEVELOPMENT
-                         │
-                         ▼
-                       GitHub
-                         │
-                         ▼
-                      Jenkins
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-         Docker Build          CI/CD Pipeline
-              │                     │
-              ▼                     ▼
-          Docker Hub           Kubernetes
-                                    │
-                         ┌──────────┴──────────┐
-                         │                     │
-                         ▼                     ▼
-                      Worker 1              Worker 2
-                         │                     │
-                         └──────────┬──────────┘
-                                    │
-                              PHP Todo Pods
-                                    │
-                     ┌──────────────┴──────────────┐
-                     │                             │
-                     ▼                             ▼
-                  cAdvisor               kube-state-metrics
-                     │                             │
-                     └──────────────┬──────────────┘
-                                    ▼
-                               Prometheus
-                                    │
-                                    ▼
-                                 Grafana
-                                    │
-                                    ▼
-                         Monitoring Dashboard
-```
-
-The project therefore demonstrates four major DevOps areas:
-
-```text
-1. Containerization
-   Docker
-
-2. Orchestration
-   Kubernetes
-
-3. Continuous Integration / Deployment
-   Jenkins + GitHub + Docker Hub
-
-4. Monitoring / Observability
-   Prometheus + Grafana + cAdvisor + kube-state-metrics
-```
-
-This gives the PHP Todo project a much more complete **end-to-end DevOps architecture** suitable for demonstrating your Kubernetes, Jenkins, containerization, CI/CD, and monitoring skills.
+This gives the PHP Todo project a much more complete **end-to-end DevOps architecture** suitable for demonstrating  Kubernetes, Jenkins, containerization, CI/CD, and monitoring technics.
