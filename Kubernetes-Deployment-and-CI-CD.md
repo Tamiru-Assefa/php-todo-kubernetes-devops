@@ -156,7 +156,7 @@ docker logs jenkins
 
 ---
 
-# 4. 🌐 Verify Jenkins and Configure Docker Hub
+# 4.  Verify Jenkins and Configure Docker Hub
 
 Open Jenkins in your browser:
 
@@ -229,7 +229,7 @@ Then provide your Docker Hub username and access token when prompted.
 
 ---
 
-# 5. 🐳 Build and Push the Application Image
+# 5.  Build and Push the Application Image
 
 Before Kubernetes can deploy our PHP application, the application must exist as a **Docker image**.
 
@@ -375,7 +375,7 @@ kubectl apply -f Kubernetes/deployment.yaml
 deployment.apps/todo-app created
 ```
 
-## ⚙️ Understanding the Deployment Settings
+##  Understanding the Deployment Settings
 
 In this file, we defined several important settings:
 
@@ -520,13 +520,13 @@ If the build succeeds, check your Docker Hub repository and verify that the newl
 
 ![Create Jenkins Job](ScreenShots/create%20jenkins%20job.png)
 
-![Jenkins Container Build](ScreenShots/jenkins%20container%20build.png)
+![Jenkins Container Build](ScreenShots/build%20jenkins%20job.png)
 
 
 
 
 
-# 📊 Monitoring Setup: Prometheus, Grafana, cAdvisor & Kubernetes Metrics
+# Monitoring Setup: Prometheus, Grafana, cAdvisor & Kubernetes Metrics
 
 This document explains how to build a complete monitoring stack for the Kubernetes cluster hosting the PHP Todo application.
 
@@ -732,7 +732,6 @@ If persistent storage is configured separately, you may also have:
 ```
 
 ---
-
 # 7. Deploy Prometheus RBAC
 
 Prometheus needs permission to discover Kubernetes resources.
@@ -779,163 +778,7 @@ kubectl get clusterrolebinding | grep prometheus
 
 ---
 
-# 8. Configure Prometheus
-
-The Prometheus configuration is normally stored inside a ConfigMap.
-
-The configuration file is:
-
-```text
-prometheus.yml
-```
-
-It defines:
-
-* Scrape interval
-* Scrape targets
-* Kubernetes service discovery
-* cAdvisor targets
-* kube-state-metrics targets
-* Other monitoring endpoints
-
-```bash
-kubectl apply -f Kubernetes/prometheus-config.yaml
-```
-
-Verify:
-
-```bash
-kubectl get configmap -n monitoring
-```
-
-You should see:
-
-```text
-prometheus-config
-```
-
-You can inspect it with:
-
-```bash
-kubectl get configmap prometheus-config \
-  -n monitoring \
-  -o yaml
-```
-
----
-
-# 9. Deploy Prometheus
-
-The Prometheus Deployment creates the Prometheus Pod.
-
-
-```bash
-kubectl apply -f Kubernetes/prometheus-deployment.yaml
-```
-
-Verify:
-
-```bash
-kubectl get deployments -n monitoring
-```
-
-
-
-Check the Pod:
-
-```bash
-kubectl get pods -n monitoring -o wide
-```
-
-
-# 11. Expose Prometheus
-
-Create the Prometheus Service:
-
-
-```bash
-kubectl apply -f Kubernetes/prometheus-service.yaml
-```
-
-Verify:
-
-```bash
-kubectl get service -n monitoring
-```
-
-
-The mapping:
-
-```text
-9090:30090/TCP
-```
-
-means:
-
-```text
-Container/Service Port: 9090
-NodePort:              30090
-```
-![img](ScreenShots/prometheus-apply.png)
-![img](ScreenShots/prometheus-get.png)
----
-
-# 12. Access Prometheus
-
-From your computer's browser:
-
-```text
-http://ip-server-1:30090
-```
-
-You can also try:
-
-```text
-http://ip-server-2:30090
-```
-
-or:
-
-```text
-http://ip-server-3:30090
-```
-
-The Prometheus interface should open.
-
----
-
-# 13. Verify Prometheus Targets
-
-Inside the Prometheus web interface, go to:
-
-```text
-Status
-    ↓
-Targets
-```
-
-You should see your configured monitoring targets.
-
-The important thing is that targets should eventually show:
-
-```text
-UP
-```
-
-If a target shows:
-
-```text
-DOWN
-```
-![img](ScreenShots/prometheus-ui.png)
-
-do not continue directly to Grafana.
-
-First investigate the failed target.
-
----
-
-# 14. Deploy kube-state-metrics
+# 8. Deploy kube-state-metrics
 
 This component is important for Kubernetes-level metrics.
 
@@ -969,8 +812,7 @@ Verify its Service:
 
 
 ---
-
-# 15. Verify kube-state-metrics
+# 9. Verify kube-state-metrics
 
 Check the Service:
 
@@ -998,7 +840,7 @@ kube-state-metrics:8080
 
 ---
 
-# 16. Deploy cAdvisor
+# 10. Deploy cAdvisor
 
 cAdvisor collects container-level resource metrics.
 
@@ -1015,8 +857,7 @@ A DaemonSet tells Kubernetes:
 This is important because container metrics are generated locally on each node.
 
 ---
-
-# 17. Important cAdvisor Node Consideration
+# 11. Important cAdvisor Node Consideration
 
 Your cluster contains:
 
@@ -1053,7 +894,7 @@ Always verify the actual result.
 
 ---
 
-# 18. Deploy cAdvisor
+# 12. Deploy cAdvisor
 
 ## Run on: `desktop-control-plane`
 
@@ -1073,13 +914,9 @@ Expected example:
 NAME       DESIRED   CURRENT   READY
 cadvisor   2         2         2
 ```
-
-
-
-
 ---
 
-# 19. Check Which Nodes Run cAdvisor
+# 13. Check Which Nodes Run cAdvisor
 
 This is important.
 
@@ -1096,11 +933,8 @@ cadvisor-xxxxx    1/1     Running   desktop-worker
 cadvisor-yyyyy    1/1     Running   desktop-worker2
 ```
 
-
-
 ---
-
-# 20. Why cAdvisor Runs on Multiple Nodes
+# 14. Why cAdvisor Runs on Multiple Nodes
 
 Suppose:
 
@@ -1148,8 +982,7 @@ container metrics
 Prometheus collects the metrics from the cAdvisor instances.
 
 ---
-
-# 21. Verify cAdvisor Metrics
+# 15. Verify cAdvisor Metrics
 
 Check the cAdvisor Service:
 
@@ -1170,6 +1003,193 @@ kubectl get endpoints -n monitoring cadvisor
 ```
 
 The endpoints should correspond to the available cAdvisor Pods.
+
+---
+---
+
+# 16. Configure Prometheus
+
+The Prometheus configuration is normally stored inside a ConfigMap.
+
+The configuration file is:
+
+```text
+prometheus.yml
+```
+
+It defines:
+
+* Scrape interval
+* Scrape targets
+* Kubernetes service discovery
+* cAdvisor targets
+* kube-state-metrics targets
+* Other monitoring endpoints
+
+```bash
+kubectl apply -f Kubernetes/prometheus-config.yaml
+```
+
+Verify:
+
+```bash
+kubectl get configmap -n monitoring
+```
+
+You should see:
+
+```text
+prometheus-config
+```
+
+You can inspect it with:
+
+```bash
+kubectl get configmap prometheus-config \
+  -n monitoring \
+  -o yaml
+```
+
+---
+
+# 17. Deploy Prometheus
+
+The Prometheus Deployment creates the Prometheus Pod.
+
+
+```bash
+kubectl apply -f Kubernetes/prometheus-deployment.yaml
+```
+
+Verify:
+
+```bash
+kubectl get deployments -n monitoring
+```
+
+
+
+Check the Pod:
+
+```bash
+kubectl get pods -n monitoring -o wide
+```
+
+
+# 18. Expose Prometheus
+
+Create the Prometheus Service:
+
+
+```bash
+kubectl apply -f Kubernetes/prometheus-service.yaml
+```
+
+Verify:
+
+```bash
+kubectl get service -n monitoring
+```
+
+
+The mapping:
+
+```text
+9090:30090/TCP
+```
+
+means:
+
+```text
+Container/Service Port: 9090
+NodePort:              30090
+```
+![img](ScreenShots/prometheus-apply.png)
+![img](ScreenShots/prometheus-get.png)
+---
+
+# 19. Access Prometheus
+
+From your computer's browser:
+
+```text
+http://ip-server-1:30090
+```
+
+You can also try:
+
+```text
+http://ip-server-2:30090
+```
+
+or:
+
+```text
+http://ip-server-3:30090
+```
+
+The Prometheus interface should open.
+
+---
+
+# 20. Verify Prometheus Targets
+
+Inside the Prometheus web interface, go to:
+
+```text
+Status
+    ↓
+Targets
+```
+
+You should see your configured monitoring targets.
+
+The important thing is that targets should eventually show:
+
+```text
+UP
+```
+
+If a target shows:
+
+```text
+DOWN
+```
+![img](ScreenShots/prometheus-ui.png)
+
+do not continue directly to Grafana.
+
+First investigate the failed target.
+
+---
+
+
+
+# 21. Verify kube-state-metrics
+
+Check the Service:
+
+```bash
+kubectl get svc kube-state-metrics -n monitoring
+```
+
+Typically it exposes port:
+
+```text
+8080
+```
+
+Prometheus should be configured to scrape:
+
+```text
+kube-state-metrics:8080
+```
+
+Because both services are in the `monitoring` namespace, the short DNS name works:
+
+```text
+kube-state-metrics:8080
+```
 
 ---
 

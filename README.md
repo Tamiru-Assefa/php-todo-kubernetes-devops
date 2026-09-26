@@ -88,19 +88,19 @@ To complete the project correctly, follow the documentation in this order:
 3. Jenkins Automation.md
 ```
 
-### 1️⃣ PRE-ENVIRONMENT-SETUP.md
+### 1 PRE-ENVIRONMENT-SETUP.md
 
 Start here.
 
 Prepare the required environment and Kubernetes cluster before deploying the application.
 
-### 2️⃣ Kubernetes-Deployment-and-CICD.md
+### 2 Kubernetes-Deployment-and-CICD.md
 
 After the environment is ready, continue with the Kubernetes deployment.
 
 This step deploys the application and database and prepares Jenkins for the CI/CD process.
 
-### 3️⃣ Jenkins Automation.md
+### 3 Jenkins Automation.md
 
 Finally, configure the GitHub Webhook.
 

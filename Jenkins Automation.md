@@ -1,10 +1,12 @@
-# 🚀 Automate Jenkins with GitHub Webhooks
+#  Automate Jenkins with GitHub Webhooks
 
 Until now, the CI/CD pipeline was started manually by clicking **Build Now** in Jenkins.
 
 In this final step, we will remove that manual action.
 
-After configuring a **GitHub Webhook**, every time code is pushed to the `devops-php-todo` repository, GitHub will notify Jenkins and Jenkins will automatically:
+After configuring a **GitHub Webhook**, every time code is pushed to certain branch of the `devops-php-todo` repository, GitHub will notify Jenkins and Jenkins will automatically:
+
+In my context i wiil use the main branch as a trigger. But as a best practice would be good to prepare production branch on github. 
 
 1. Checkout the latest code.
 2. Build the Docker image.
